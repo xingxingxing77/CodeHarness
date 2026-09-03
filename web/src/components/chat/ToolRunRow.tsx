@@ -5,7 +5,7 @@
 import { useState } from "react";
 
 import { ValuePill } from "@/components/bui/atoms/entity-chip";
-import type { ToolRun } from "@/hooks/useChatStream";
+import type { ToolRun } from "@/stores/chatStore";
 
 export function ToolRunRow({ tool }: { tool: ToolRun }) {
   const [open, setOpen] = useState(false);

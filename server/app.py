@@ -32,6 +32,7 @@ from api.protocol import SupportsStreamingMessages
 from permissions.engine import RulePermissionEngine, builtin_recipe_rules
 from services.compact import BasicCompactor
 from tools.base import ToolRegistry
+from state.session_state import SessionState
 
 log = logging.getLogger(__name__)
 
@@ -175,6 +176,17 @@ class ServerComponents:
     async def build_deps(self, job: RunJob) -> EngineDeps:
         session = await self.session_admin.get_session(job.session_id)
         model = (session or {}).get("model") or "claude-sonnet-4-6"
+        state_raw = (session or {}).get("session_state")
+        state_obj: SessionState | None = None
+        if isinstance(state_raw, dict):
+            from state.session_state import SessionState as _SS
+
+            try:
+                state_obj = _SS(**state_raw)
+            except TypeError:
+                state_obj = None
+        elif isinstance(state_raw, SessionState):
+            state_obj = state_raw
         chat = None
         if self.credential_store is not None:
             from api.factory import create_client
@@ -204,8 +216,8 @@ class ServerComponents:
             cfg=EngineConfig(
                 model=model,
                 system_prompt=(
-                    self.prompt.compose(session.get("session_state"))
-                    if self.prompt is not None and isinstance(session.get("session_state"), dict)
+                    self.prompt.compose(state_obj)
+                    if self.prompt is not None
                     else self.system_prompt
                 ),
                 max_tokens=self.max_tokens,
