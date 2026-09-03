@@ -43,20 +43,18 @@ export function useChatStream(sessionId: string | null) {
     const es = new EventSource(api.eventsUrl(sessionId));
     let timeoutRef: ReturnType<typeof setTimeout> | null = null;
 
-    const armTimeout = () => {
+    // 读超时 = “无状态变更间隔”30s：任何 store 变更都会重置；空闲（finished）不计时
+    const unsubStore = useChatStore.subscribe((s) => {
       if (timeoutRef) clearTimeout(timeoutRef);
-      timeoutRef = setTimeout(() => {
-        setStatus("等待响应超时，可点击 Stop 后重试");
-      }, READ_TIMEOUT_MS);
-    };
+      if (!s.finished) {
+        timeoutRef = setTimeout(() => {
+          setStatus("等待响应超时，可点击 Stop 后重试");
+        }, READ_TIMEOUT_MS);
+      }
+    });
 
     const on = <T extends SSEEventType>(type: T) => {
       es.addEventListener(type, (e) => {
-        if (type === "run_finished") {
-          if (timeoutRef) clearTimeout(timeoutRef);  // 收敛后不再触发读超时
-        } else {
-          armTimeout();
-        }
         const full = JSON.parse((e as MessageEvent).data) as AnySSEEvent;
         reduceEvent(full);
       });
@@ -82,8 +80,8 @@ export function useChatStream(sessionId: string | null) {
       }
     };
 
-    armTimeout();
     return () => {
+      unsubStore();
       if (timeoutRef) clearTimeout(timeoutRef);
       es.close();
     };

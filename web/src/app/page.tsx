@@ -32,7 +32,7 @@ export default function SessionsPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-[720px] flex-col gap-4 px-4 py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-[720px] flex-col gap-4 overflow-x-hidden px-4 py-10">
       <div className="flex items-center justify-between">
         <div>
           <div className="text-[20px] font-medium text-ink">Sessions</div>

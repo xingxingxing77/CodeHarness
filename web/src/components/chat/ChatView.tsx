@@ -3,8 +3,12 @@
 /** 聊天页主视图：chatStore 驱动；时间线/思考面板/审批/暗色切换/滚动锚定。 */
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { ValuePill } from "@/components/bui/atoms/entity-chip";
+import { api } from "@/lib/api";
+import type { Session } from "@/lib/types";
+import WorkspaceSidebar from "@/components/WorkspaceSidebar";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { ComposerBar } from "@/components/chat/ComposerBar";
 import { ThoughtPanel } from "@/components/chat/ThoughtPanel";
@@ -29,6 +33,12 @@ export function ChatView({ sessionId }: { sessionId: string }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [stick, setStick] = useState(true);
   const [dark, setDark] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const router = useRouter();
+
+  useEffect(() => {
+    api.listSessions().then(setSessions).catch(() => undefined);
+  }, [sessionId]);
 
   useEffect(() => {
     setDark(document.documentElement.classList.contains("dark"));
@@ -55,8 +65,26 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       </div>
     ) : null;
 
+  const recents = sessions.map((s) => ({ id: s.id, label: s.title || s.id.slice(0, 8) }));
+
+  const newSession = async () => {
+    const { id } = await api.createSession("claude-sonnet-4-6", "New session");
+    setSessions((prev) => [{ id, title: "New session", model: "claude-sonnet-4-6" }, ...prev]);
+    router.push(`/sessions/${id}`);
+  };
+
   return (
-    <div className="flex h-dvh flex-col bg-page">
+    <div className="flex h-dvh overflow-hidden bg-page">
+      <WorkspaceSidebar
+        recents={recents}
+        activeSessionId={sessionId}
+        onPick={(id) => router.push(`/sessions/${id}`)}
+        onNewChat={newSession}
+        footerLabel={dark ? "Light mode" : "Dark mode"}
+        footerIcon={dark ? "☀" : "☾"}
+        onFooterClick={toggleTheme}
+      />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <header className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5">
         <a href="/" className="text-[12.5px] text-ink-2 hover:text-ink">
           ← Sessions
@@ -127,6 +155,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
 
       <div className="mx-auto w-full max-w-[760px] px-4 pb-4">
         <ComposerBar running={running} onSend={(text) => send(text)} />
+      </div>
       </div>
     </div>
   );
