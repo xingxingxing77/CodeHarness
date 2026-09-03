@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
+import { Hash, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, SquarePen, Sun, X } from "lucide-react";
 
 import { api } from "@/lib/api";
 import { AppSidebar, buildNavGroups } from "@/components/shell/AppSidebar";
@@ -45,6 +45,7 @@ function activeNavId(pathname: string): string {
     "/credentials": "/credentials",
   };
   if (named[pathname]) return named[pathname];
+  if (pathname.startsWith("/sessions/")) return pathname.split("/")[2];
   return "chats";
 }
 
@@ -63,6 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [pending, setPending] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [dark, setDark] = useState(false);
 
   useEffect(() => {
     api.listSessions().then(setSessions).catch(() => undefined);
@@ -71,6 +73,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .then((rows) => setPending(rows.length))
       .catch(() => undefined);
   }, [pathname]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("codeharness_theme");
+    const isDark = stored ? stored === "dark" : document.documentElement.classList.contains("dark");
+    document.documentElement.classList.toggle("dark", isDark);
+    setDark(isDark);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -84,24 +93,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const groups = useMemo(() => buildNavGroups(pending), [pending]);
+  const groups = useMemo(
+    () => [
+      { items: [{ id: "__new", title: "New chat", icon: SquarePen }] },
+      {
+        heading: "Chats",
+        items: sessions.slice(0, 8).map((s) => ({ id: s.id, title: s.title || s.id.slice(0, 8), icon: Hash })),
+      },
+      ...buildNavGroups(pending),
+    ],
+    [pending, sessions],
+  );
   const activeId = activeNavId(pathname);
   const title = titleForPath(pathname, sessions);
-
-  const sessionEntries = sessions.slice(0, 5).map((s) => ({
-    label: `↳ ${s.title || s.id.slice(0, 8)}`,
-    href: `/sessions/${s.id}`,
-  }));
-  const paletteActions = [...PALETTE_ACTIONS, ...sessionEntries];
-  const filtered = paletteActions.filter((a) => a.label.toLowerCase().includes(query.toLowerCase()));
 
   const navigate = (href: string) => {
     setPaletteOpen(false);
     router.push(href);
   };
 
+  const newChat = () => {
+    api
+      .createSession("claude-sonnet-4-6", "New session")
+      .then(({ id }) => router.push(`/sessions/${id}`))
+      .catch(() => undefined);
+  };
+
+  const toggleTheme = () => {
+    const next = !dark;
+    setDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("codeharness_theme", next ? "dark" : "light");
+  };
+
+  const sessionEntries = sessions.slice(0, 5).map((s) => ({
+    label: `↳ ${s.title || s.id.slice(0, 8)}`,
+    href: `/sessions/${s.id}`,
+  }));
+  const filtered = [...PALETTE_ACTIONS, ...sessionEntries].filter((a) =>
+    a.label.toLowerCase().includes(query.toLowerCase()),
+  );
+
   return (
-    <div className="flex h-dvh overflow-hidden bg-page">
+    <div className="relative flex h-dvh overflow-hidden bg-page">
       <div
         className="shrink-0 overflow-hidden border-r border-line bg-surface transition-[width] duration-300"
         style={{ width: collapsed ? 64 : 248 }}
@@ -110,11 +144,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           groups={groups}
           activeId={activeId}
           onSelect={(id) => {
+            if (id === "__new") {
+              newChat();
+              return;
+            }
+            if (id === "search") {
+              setPaletteOpen(true);
+              return;
+            }
+            if (id === "__theme") {
+              toggleTheme();
+              return;
+            }
             if (id.startsWith("/")) navigate(id);
           }}
           onNavigate={navigate}
           collapsed={collapsed}
-          bottomItems={[{ id: "settings", title: "Settings", icon: Search, shortcut: "⌘,", href: "/settings" }]}
+          bottomItems={[
+            { id: "__theme", title: dark ? "Light mode" : "Dark mode", icon: dark ? Sun : Moon },
+            { id: "settings", title: "Settings", icon: Settings, shortcut: "⌘,", href: "/settings" },
+          ]}
         />
       </div>
 
@@ -175,7 +224,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex max-h-[320px] flex-col overflow-y-auto p-1.5">
               {filtered.map((a) => (
                 <button
-                  key={a.label}
+                  key={a.href}
                   onClick={() => navigate(a.href)}
                   className="rounded-[8px] px-3 py-2.5 text-left text-[13px] text-ink transition-colors hover:bg-hover"
                 >

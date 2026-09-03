@@ -3,11 +3,8 @@
 /** 聊天页主视图：chatStore 驱动；时间线/思考面板/审批/暗色切换/滚动锚定。 */
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 
 import { ValuePill } from "@/components/bui/atoms/entity-chip";
-import { api } from "@/lib/api";
-import type { Session } from "@/lib/types";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { PromptBox } from "@/components/chat/PromptBox";
 import { ThoughtPanel } from "@/components/chat/ThoughtPanel";
@@ -31,24 +28,6 @@ export function ChatView({ sessionId }: { sessionId: string }) {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const [stick, setStick] = useState(true);
-  const [dark, setDark] = useState(false);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const router = useRouter();
-
-  useEffect(() => {
-    api.listSessions().then(setSessions).catch(() => undefined);
-  }, [sessionId]);
-
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
-  }, []);
-
-  const toggleTheme = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("codeharness_theme", next ? "dark" : "light");
-  };
 
   useEffect(() => {
     if (stick) bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
