@@ -4,7 +4,7 @@
 
 import { create } from "zustand";
 
-import type { ApprovalItem, PlatformMessage, SSEEventMap } from "@/lib/types";
+import type { ApprovalItem, ContentBlock, PlatformMessage, SSEEventMap } from "@/lib/types";
 
 export type ToolRun = {
   key: string;
@@ -37,7 +37,7 @@ type ChatState = {
   lastError: { code: string; message: string } | null;
 
   loadHistory: (messages: PlatformMessage[]) => void;
-  appendUser: (text: string) => void;
+  appendUser: (content: ContentBlock[]) => void;
   appendStreamChunk: (text: string) => void;
   setFinalAnswer: (message: PlatformMessage) => void;
   addThought: (label: string) => void;
@@ -66,9 +66,9 @@ export const useChatStore = create<ChatState>((set) => ({
 
   loadHistory: (messages) => set({ messages, finished: true }),
 
-  appendUser: (text) =>
+  appendUser: (content) =>
     set((s) => ({
-      messages: [...s.messages, { role: "user", content: [{ type: "text", text }] }],
+      messages: [...s.messages, { role: "user", content }],
       finished: false,
       status: null,
       usage: null,

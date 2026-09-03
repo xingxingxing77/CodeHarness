@@ -8,9 +8,8 @@ import { useRouter } from "next/navigation";
 import { ValuePill } from "@/components/bui/atoms/entity-chip";
 import { api } from "@/lib/api";
 import type { Session } from "@/lib/types";
-import WorkspaceSidebar from "@/components/WorkspaceSidebar";
 import { MessageBubble } from "@/components/chat/MessageBubble";
-import { ComposerBar } from "@/components/chat/ComposerBar";
+import { PromptBox } from "@/components/chat/PromptBox";
 import { ThoughtPanel } from "@/components/chat/ThoughtPanel";
 import { mapErrorText } from "@/lib/errors";
 import { useChatStream } from "@/hooks/useChatStream";
@@ -65,41 +64,16 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       </div>
     ) : null;
 
-  const recents = sessions.map((s) => ({ id: s.id, label: s.title || s.id.slice(0, 8) }));
-
-  const newSession = async () => {
-    const { id } = await api.createSession("claude-sonnet-4-6", "New session");
-    setSessions((prev) => [{ id, title: "New session", model: "claude-sonnet-4-6" }, ...prev]);
-    router.push(`/sessions/${id}`);
-  };
-
   return (
-    <div className="flex h-dvh overflow-hidden bg-page">
-      <WorkspaceSidebar
-        recents={recents}
-        activeSessionId={sessionId}
-        onPick={(id) => router.push(`/sessions/${id}`)}
-        onNewChat={newSession}
-        footerLabel={dark ? "Light mode" : "Dark mode"}
-        footerIcon={dark ? "☀" : "☾"}
-        onFooterClick={toggleTheme}
-      />
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5">
-        <a href="/" className="text-[12.5px] text-ink-2 hover:text-ink">
-          ← Sessions
-        </a>
-        <span className="text-[13px] font-medium text-ink">{sessionId.slice(0, 8)}</span>
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-line bg-surface px-4 py-1.5">
         {status && <span className="text-[12px] text-ink-2">{status}</span>}
-        <button onClick={toggleTheme} className="ml-auto text-[12px] text-ink-3 hover:text-ink">
-          {dark ? "☀" : "☾"}
-        </button>
         {usage && (
-          <span className="text-[11.5px] tabular-nums text-ink-3">
+          <span className="ml-auto text-[11.5px] tabular-nums text-ink-3">
             {usage.input_tokens} in / {usage.output_tokens} out
           </span>
         )}
-      </header>
+      </div>
 
       <div
         className="flex-1 overflow-y-auto"
@@ -154,8 +128,11 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       </div>
 
       <div className="mx-auto w-full max-w-[760px] px-4 pb-4">
-        <ComposerBar running={running} onSend={(text) => send(text)} />
-      </div>
+        <PromptBox
+          running={running}
+          onSend={(blocks) => send(blocks)}
+          className="mx-auto w-full max-w-[760px]"
+        />
       </div>
     </div>
   );

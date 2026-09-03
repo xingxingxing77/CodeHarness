@@ -1,71 +1,51 @@
 "use client";
 
-/** 会话列表（侧栏 IA 的最小骨架：列表 + 新建）。 */
+/** 首页：自动创建会话并直达聊天页（rag-web ensureThread 惰性创建模式）。 */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/bui/atoms/button";
 import { Shimmer } from "@/components/bui/atoms/shimmer";
 import { api } from "@/lib/api";
-import type { Session } from "@/lib/types";
 
-export default function SessionsPage() {
+const DRAFT_KEY = "codeharness_draft_session";
+
+export default function HomePage() {
   const router = useRouter();
-  const [sessions, setSessions] = useState<Session[] | null>(null);
-  const [creating, setCreating] = useState(false);
+  const started = useRef(false);
+  const [ready, setReady] = useState(false);
 
-  const load = () => {
-    api.listSessions().then(setSessions).catch(() => setSessions([]));
-  };
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
 
-  useEffect(load, []);
-
-  const create = async () => {
-    setCreating(true);
-    try {
-      const { id } = await api.createSession("claude-sonnet-4-6", "New session");
-      router.push(`/sessions/${id}`);
-    } finally {
-      setCreating(false);
+    const draft = sessionStorage.getItem(DRAFT_KEY);
+    if (draft) {
+      sessionStorage.removeItem(DRAFT_KEY);
+      router.replace(`/sessions/${draft}`);
+      return;
     }
-  };
+
+    api
+      .createSession("claude-sonnet-4-6", "New session")
+      .then(({ id }) => {
+        sessionStorage.setItem(DRAFT_KEY, id);
+        router.replace(`/sessions/${id}`);
+      })
+      .catch(() => setReady(true));
+  }, [router]);
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-[720px] flex-col gap-4 overflow-x-hidden px-4 py-10">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-[20px] font-medium text-ink">Sessions</div>
-          <div className="text-[12.5px] text-ink-2">Pick up a conversation or start a new one.</div>
-        </div>
-        <Button size="md" disabled={creating} onClick={create}>
-          {creating ? "Creating…" : "New session"}
-        </Button>
-      </div>
-
-      {sessions === null ? (
-        <div className="flex flex-col gap-2 pt-4">
-          <Shimmer>Loading…</Shimmer>
-          <Shimmer>Loading…</Shimmer>
-        </div>
-      ) : sessions.length === 0 ? (
-        <div className="mt-16 rounded-card border border-line bg-surface p-6 text-center text-[13px] text-ink-2">
-          No sessions yet — create one and say hi.
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-page px-4">
+      <div className="text-center text-[28px] font-medium text-ink">Codeharness</div>
+      {ready ? (
+        <div className="rounded-card border border-line bg-surface p-6 text-center text-[13px] text-ink-2">
+          Cannot reach the server. Start it with <code className="font-mono">python scripts/run_server.py</code>.
         </div>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {sessions.map((s) => (
-            <li key={s.id}>
-              <a
-                href={`/sessions/${s.id}`}
-                className="flex items-center justify-between rounded-card border border-line bg-surface px-4 py-3 shadow-card transition-colors hover:bg-hover"
-              >
-                <span className="text-[13px] font-medium text-ink">{s.title || s.id.slice(0, 8)}</span>
-                <span className="text-[11.5px] text-ink-3">{s.model}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
+        <div className="flex w-full max-w-[560px] flex-col gap-2">
+          <Shimmer>Preparing your workspace…</Shimmer>
+        </div>
       )}
     </main>
   );

@@ -5,16 +5,24 @@
  * 状态本体在 zustand store；本 hook 只做连接管理与发送/决策动作。
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { mapErrorText } from "@/lib/errors";
 import { reduceEvent, useChatStore, type AnySSEEvent } from "@/stores/chatStore";
-import type { SSEEventType } from "@/lib/types";
+import type { ContentBlock, SSEEventType } from "@/lib/types";
 
 const READ_TIMEOUT_MS = 30_000;
 
-export function useChatStream(sessionId: string | null) {
+export function useChatStream(
+  sessionId: string | null,
+  onSessionCreated?: (id: string) => void,
+) {
+  const [activeId, setActiveId] = useState(sessionId);
+
+  useEffect(() => {
+    setActiveId(sessionId);
+  }, [sessionId]);
   const loadHistory = useChatStore((s) => s.loadHistory);
   const appendUser = useChatStore((s) => s.appendUser);
   const setStatus = useChatStore((s) => s.setStatus);
@@ -39,8 +47,11 @@ export function useChatStream(sessionId: string | null) {
 
   // SSE 订阅（EventSource 断线自动重连并带 Last-Event-ID）
   useEffect(() => {
-    if (!sessionId) return;
-    const es = new EventSource(api.eventsUrl(sessionId));
+    if (!activeId) return;
+    // 草稿创建的会话：从缓冲头重放（POST 可能先于订阅到达）
+    const after = createdHereRef.current ? "0" : undefined;
+    createdHereRef.current = false;
+    const es = new EventSource(api.eventsUrl(activeId, after));
     let timeoutRef: ReturnType<typeof setTimeout> | null = null;
 
     // 读超时 = “无状态变更间隔”30s：任何 store 变更都会重置；空闲（finished）不计时
@@ -85,14 +96,23 @@ export function useChatStream(sessionId: string | null) {
       if (timeoutRef) clearTimeout(timeoutRef);
       es.close();
     };
-  }, [sessionId, setStatus, setLastError]);
+  }, [activeId, setStatus, setLastError]);
 
   const send = useCallback(
-    async (text: string) => {
-      if (!sessionId || !text.trim()) return;
-      appendUser(text.trim());
+    async (blocks: ContentBlock[], toolId: string | null = null) => {
+      if (!blocks.length) return;
+      let id = activeId;
+      if (!id) {
+        // 草稿模式：首条消息时惰性创建会话
+        const created = await api.createSession("claude-sonnet-4-6", "New session");
+        id = created.id;
+        createdHereRef.current = true;
+        setActiveId(id);
+        onSessionCreated?.(id);
+      }
+      appendUser(blocks);
       try {
-        await api.sendMessage(sessionId, [{ type: "text", text: text.trim() }]);
+        await api.sendMessage(id, blocks);
       } catch (err) {
         resetTurn();
         setLastError({
@@ -101,8 +121,9 @@ export function useChatStream(sessionId: string | null) {
         });
       }
     },
-    [sessionId, appendUser, resetTurn, setLastError],
+    [activeId, appendUser, resetTurn, setLastError, onSessionCreated],
   );
+  const createdHereRef = { current: false };
 
   const decide = useCallback(
     async (
@@ -122,5 +143,5 @@ export function useChatStream(sessionId: string | null) {
     [setLastError],
   );
 
-  return { send, decide };
+  return { send, decide, activeId };
 }

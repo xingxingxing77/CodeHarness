@@ -8,6 +8,9 @@
     "start": "next start"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.23",
+    "@radix-ui/react-popover": "^1.1.23",
+    "@radix-ui/react-tooltip": "^1.2.16",
     "lucide-react": "^1.39.0",
     "next": "16.3.4",
     "react": "19.2.8",

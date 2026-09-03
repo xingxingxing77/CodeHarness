@@ -46,6 +46,33 @@ export const api = {
       body: JSON.stringify({ choices }),
     }),
 
+  // ---- P3/P4 扩展 ----
+
+  listSkills: () => request<{ name: string; description: string }[]>("/api/v1/skills"),
+
+  listCredentials: () =>
+    request<{ id: string; provider: string; label: string }[]>("/api/v1/credentials"),
+
+  addCredential: (body: { provider: string; api_key: string; label?: string; base_url?: string }) =>
+    request<{ id: string; provider: string }>("/api/v1/credentials", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  deleteCredential: (credentialId: string) =>
+    request<{ deleted: boolean }>(`/api/v1/credentials/${credentialId}`, { method: "DELETE" }),
+
+  addMemory: (body: { content: string; kind?: string; session_id?: string }) =>
+    request<{ id: number; content: string; kind: string }>("/api/v1/memories", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  searchMemories: (q: string, k = 5) =>
+    request<{ id: number; content: string; kind: string; score: number }[]>(
+      `/api/v1/memories/search?q=${encodeURIComponent(q)}&k=${k}`,
+    ),
+
   eventsUrl: (sessionId: string, after?: string) =>
     `${BASE}/api/v1/sessions/${sessionId}/events${after ? `?after=${encodeURIComponent(after)}` : ""}`,
 };
