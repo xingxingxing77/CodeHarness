@@ -400,8 +400,8 @@ def create_app(
 
     @app.post("/api/v1/sessions", status_code=201)
     async def create_session(body: CreateSessionBody):
-        if body.workspace_id and components.workspaces is not None:
-            ws = await components.workspaces.get(body.workspace_id)
+        if body.workspace_id and proxy.workspaces is not None:
+            ws = await proxy.workspaces.get(body.workspace_id)
             if ws is None:
                 raise HTTPException(status_code=404, detail="workspace not found")
         session_id = await proxy.session_admin.create_session(
@@ -423,8 +423,8 @@ def create_app(
     @app.patch("/api/v1/sessions/{session_id}")
     async def update_session(session_id: str, body: UpdateSessionBody):
         await _require_session(session_id)
-        if body.workspace_id and components.workspaces is not None:
-            ws = await components.workspaces.get(body.workspace_id)
+        if body.workspace_id and proxy.workspaces is not None:
+            ws = await proxy.workspaces.get(body.workspace_id)
             if ws is None:
                 raise HTTPException(status_code=404, detail="workspace not found")
         updated = await proxy.session_admin.update_session(
@@ -460,10 +460,10 @@ def create_app(
             if not models:
                 continue
             configured = bool(os.environ.get(spec.env_key)) if spec.env_key else False
-            if not configured and components.credential_store is not None:
+            if not configured and proxy.credential_store is not None:
                 try:
-                    creds = await components.credential_store.resolve_provider(
-                        components.auth_tenant_id, spec.name
+                    creds = await proxy.credential_store.resolve_provider(
+                        proxy.auth_tenant_id, spec.name
                     )
                     configured = creds is not None
                 except Exception:
@@ -482,13 +482,13 @@ def create_app(
 
     @app.get("/api/v1/workspaces")
     async def list_workspaces():
-        if components.workspaces is None:
+        if proxy.workspaces is None:
             return []
-        return await components.workspaces.list(components.auth_tenant_id)
+        return await proxy.workspaces.list(proxy.auth_tenant_id)
 
     @app.post("/api/v1/workspaces", status_code=201)
     async def add_workspace(body: dict[str, Any]):
-        if components.workspaces is None:
+        if proxy.workspaces is None:
             raise HTTPException(status_code=503, detail="workspace store not configured")
         name = str(body.get("name", "")).strip()
         path = str(body.get("path", "")).strip()
@@ -496,13 +496,13 @@ def create_app(
             raise HTTPException(status_code=422, detail="name and path required")
         if not os.path.isdir(path):
             raise HTTPException(status_code=422, detail=f"path is not a directory: {path}")
-        return await components.workspaces.create(name, path, components.auth_tenant_id)
+        return await proxy.workspaces.create(name, path, proxy.auth_tenant_id)
 
     @app.delete("/api/v1/workspaces/{workspace_id}")
     async def delete_workspace(workspace_id: str):
-        if components.workspaces is None:
+        if proxy.workspaces is None:
             raise HTTPException(status_code=503, detail="workspace store not configured")
-        removed = await components.workspaces.delete(workspace_id)
+        removed = await proxy.workspaces.delete(workspace_id)
         if not removed:
             raise HTTPException(status_code=404, detail="workspace not found")
         return {"deleted": True}
