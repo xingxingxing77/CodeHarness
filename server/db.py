@@ -102,6 +102,20 @@ CREATE TABLE IF NOT EXISTS memories (
 CREATE INDEX IF NOT EXISTS idx_memories_ann ON memories USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_memories_tenant ON memories(tenant_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS tasks (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   uuid NOT NULL REFERENCES tenants(id),
+    session_id  uuid NOT NULL REFERENCES sessions(id),
+    parent_run_id uuid,
+    agent_name  text NOT NULL DEFAULT 'teammate',
+    description text NOT NULL DEFAULT '',
+    status      text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','succeeded','failed','cancelled')),
+    result      jsonb,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    finished_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS approvals (
     ticket_id   text PRIMARY KEY,
     run_id      uuid NOT NULL REFERENCES runs(id),

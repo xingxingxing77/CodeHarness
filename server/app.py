@@ -148,6 +148,8 @@ class ServerComponents:
     policy: Any = None
     credential_store: Any = None        # PgCredentialStore / None
     memory_store: Any = None            # MemoryStore / None
+    skill_registry: Any = None          # SkillRegistry / None
+    task_store: Any = None              # PgTaskStore / None
     prompt: Any = None                  # PromptComposer / None
     auth_enabled: bool = False
     jwt_secret: str = ""
@@ -511,6 +513,37 @@ def create_app(
         if not removed:
             raise HTTPException(status_code=404, detail="credential not found")
         return {"deleted": True}
+
+    # -- 技能 / 任务（P4 骨架） ---------------------------------------------------
+
+    @app.get("/api/v1/skills")
+    async def list_skills():
+        if proxy.skill_registry is None:
+            return []
+        return [
+            {"name": s.name, "description": s.description}
+            for s in proxy.skill_registry.list()
+        ]
+
+    @app.get("/api/v1/sessions/{session_id}/tasks")
+    async def list_tasks(session_id: str):
+        if proxy.task_store is None:
+            raise HTTPException(status_code=503, detail="task store not configured")
+        return await proxy.task_store.list(session_id)
+
+    @app.post("/api/v1/sessions/{session_id}/tasks", status_code=201)
+    async def create_task(session_id: str, body: dict[str, Any]):
+        if proxy.task_store is None:
+            raise HTTPException(status_code=503, detail="task store not configured")
+        description = str(body.get("description", "")).strip()
+        if not description:
+            raise HTTPException(status_code=422, detail="description required")
+        task_id = await proxy.task_store.create(components.auth_tenant_id, session_id, description)
+        run_id = str(uuid.uuid4())
+        await proxy.run_store.create_run(run_id, session_id)
+        job = RunJob(run_id=run_id, session_id=session_id, tenant_id="default", kind="new")
+        await proxy.queue.enqueue(job)
+        return {"task_id": task_id, "run_id": run_id}
 
     # -- 语义记忆（P3） -----------------------------------------------------------
 

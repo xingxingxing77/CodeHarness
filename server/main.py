@@ -112,6 +112,12 @@ async def _make_components() -> ServerComponents:
         identity="You are Codeharness, a capable coding agent for this tenant.",
     )
 
+    from skills.registry import SkillRegistry
+    from tasks.service import PgTaskStore
+
+    skill_roots = [os.environ.get("CODEHARNESS_SKILLS_ROOT", "./skills_repo")]
+    task_store = PgTaskStore(pool)
+
     components = ServerComponents(
         message_store=PgMessageStore(pool),
         session_store=PgSessionStore(pool),
@@ -130,6 +136,8 @@ async def _make_components() -> ServerComponents:
         policy=hooks_bus,
         credential_store=credential_store,
         memory_store=memory_store,
+        skill_registry=SkillRegistry(skill_roots),
+        task_store=task_store,
         auth_enabled=os.environ.get("AUTH_ENABLED", "0") == "1",
         jwt_secret=os.environ.get("JWT_SECRET", ""),
         checkpointer=checkpointer,
