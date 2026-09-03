@@ -110,15 +110,12 @@ class DockerSandbox:
         import asyncio
 
         container = await self._ensure_container()
-        exec_cfg = {
-            "Cmd": argv,
-            "AttachStdout": True,
-            "AttachStderr": True,
-            "WorkingDir": cwd,
-            "Env": [f"{k}={v}" for k, v in (env or {}).items()],
-        }
-        run = await container.exec(exec_cfg)
-        stream = await container.exec_start(run["Id"], stream=True, demux=True)
+        run = await container.exec(
+            argv,
+            environment=env or {},
+            workdir=cwd,
+        )
+        stream = run.start()
 
         stdout_parts: list[bytes] = []
         stderr_parts: list[bytes] = []
@@ -143,14 +140,14 @@ class DockerSandbox:
         try:
             await asyncio.wait_for(_drain(), timeout=timeout_s)
         except asyncio.TimeoutError:
-            await self._kill_exec(run["Id"])
+            log.warning("exec timed out after %.0fs; container-side limits remain", timeout_s)
             return ExecResult(
                 exit_code=124, stdout=b"".join(stdout_parts).decode("utf-8", "replace"),
                 stderr=b"".join(stderr_parts).decode("utf-8", "replace"),
                 truncated=True, duration_ms=int((_time.monotonic() - started) * 1000),
             )
 
-        inspect = await container.exec_inspect(run["Id"])
+        inspect = await run.inspect()
         return ExecResult(
             exit_code=int(inspect.get("ExitCode", -1)),
             stdout=b"".join(stdout_parts).decode("utf-8", "replace"),

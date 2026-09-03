@@ -1,12 +1,18 @@
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        bash coreutils findutils grep \
-        ripgrep fd-find jq \
-        python3 python3-minimal \
-        nodejs npm \
-        ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# 精简镜像：bash 工具链 + python3 + ripgrep（nodejs 依赖链过大，M1 沙箱不装）
+# apt 源偶发 502：内置 5 次重试
+RUN set -eux; \
+    for i in 1 2 3 4 5; do \
+        apt-get update \
+        && apt-get install -y --no-install-recommends --fix-missing \
+            bash coreutils findutils grep \
+            ripgrep fd-find jq \
+            python3 python3-minimal \
+            ca-certificates \
+        && break || { echo "[apt retry $i]"; sleep 10; }; \
+    done; \
+    rm -rf /var/lib/apt/lists/*
 
 COPY jail.py /usr/local/bin/jail
 RUN chmod 755 /usr/local/bin/jail \
