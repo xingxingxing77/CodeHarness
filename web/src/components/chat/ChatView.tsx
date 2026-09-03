@@ -7,7 +7,6 @@ import { useEffect, useRef, useState } from "react";
 import { ValuePill } from "@/components/bui/atoms/entity-chip";
 import { api } from "@/lib/api";
 import { MessageBubble } from "@/components/chat/MessageBubble";
-import { ModelPicker } from "@/components/chat/ModelPicker";
 import { PromptBox } from "@/components/chat/PromptBox";
 import { ThoughtPanel } from "@/components/chat/ThoughtPanel";
 import { mapErrorText } from "@/lib/errors";
@@ -74,7 +73,6 @@ export function ChatView({ sessionId }: { sessionId: string }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <ModelPicker model={model} onPick={changeModel} className="rounded-full border border-line bg-surface" />
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-[12.5px] text-ink-2">
               Standard 模式
             </span>
