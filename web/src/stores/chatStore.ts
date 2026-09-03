@@ -151,11 +151,7 @@ export const useChatStore = create<ChatState>((set) => ({
   resetTurn: () =>
     set({
       status: null,
-      usage: null,
-      typewriterTarget: null,
       approval: null,
-      thoughtSteps: [],
-      tools: [],
       lastError: null,
       finished: true,
     }),

@@ -1,8 +1,9 @@
 "use client";
 
-/** 消息气泡：user 右侧软块 / assistant Markdown；终态打字机回放 + 复制按钮。 */
+/** 消息气泡：user 右侧软块 / assistant Markdown；终态打字机回放 + 操作条（复制/赞/踩）。 */
 
 import { useState } from "react";
+import { Check, Copy, ThumbsDown, ThumbsUp } from "lucide-react";
 
 import { MarkdownAnswer } from "@/components/chat/MarkdownAnswer";
 import { TypewriterText } from "@/components/chat/TypewriterText";
@@ -18,6 +19,7 @@ export function MessageBubble({
   onTypewriterDone?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [vote, setVote] = useState<"up" | "down" | null>(null);
   const text = message.content
     .filter((b) => b.type === "text")
     .map((b) => (b as { text: string }).text)
@@ -40,8 +42,12 @@ export function MessageBubble({
     );
   }
 
+  const replaying = typewriterTarget !== null && typewriterTarget === text;
+  const actionBtn =
+    "flex size-7 items-center justify-center rounded-[6px] text-ink-3 transition-colors hover:bg-hover hover:text-ink";
+
   return (
-    <div className="group flex flex-col gap-2">
+    <div className="group flex flex-col gap-1.5">
       {toolCalls.map((tc) =>
         tc.type === "tool_call" ? (
           <span
@@ -52,18 +58,35 @@ export function MessageBubble({
           </span>
         ) : null,
       )}
-      {typewriterTarget !== null && typewriterTarget === text ? (
+      {replaying ? (
         <TypewriterText target={typewriterTarget} onDone={onTypewriterDone} />
       ) : (
         <MarkdownAnswer content={text} />
       )}
-      {text && (
-        <button
-          onClick={copy}
-          className="self-start text-[11px] text-ink-3 opacity-0 transition-opacity hover:text-ink-2 group-hover:opacity-100"
-        >
-          {copied ? "已复制" : "复制"}
-        </button>
+      {text && !replaying && (
+        <div className="-ml-1 flex items-center gap-0.5">
+          <button onClick={copy} className={actionBtn} aria-label="Copy" title="复制">
+            {copied ? <Check className="size-3.5 text-accent-ink" /> : <Copy className="size-3.5" />}
+          </button>
+          <button
+            onClick={() => setVote(vote === "up" ? null : "up")}
+            className={`${actionBtn} ${vote === "up" ? "text-accent-ink" : ""}`}
+            aria-label="Good response"
+            aria-pressed={vote === "up"}
+            title="有帮助"
+          >
+            <ThumbsUp className={`size-3.5 ${vote === "up" ? "fill-current" : ""}`} />
+          </button>
+          <button
+            onClick={() => setVote(vote === "down" ? null : "down")}
+            className={`${actionBtn} ${vote === "down" ? "text-red" : ""}`}
+            aria-label="Bad response"
+            aria-pressed={vote === "down"}
+            title="需改进"
+          >
+            <ThumbsDown className={`size-3.5 ${vote === "down" ? "fill-current" : ""}`} />
+          </button>
+        </div>
       )}
     </div>
   );

@@ -2,10 +2,16 @@
 
 /** 终态打字机回放组件：块状光标 + 「立即显示全部」skip。 */
 
+import { useEffect } from "react";
+
 import { useTypewriter } from "@/hooks/useTypewriter";
 
 export function TypewriterText({ target, onDone }: { target: string; onDone?: () => void }) {
   const { shown, done, skip } = useTypewriter(target);
+
+  useEffect(() => {
+    if (done) onDone?.();
+  }, [done, onDone]);
 
   return (
     <div className="flex flex-col gap-1">
