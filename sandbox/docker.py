@@ -196,10 +196,13 @@ class SandboxPool:
         self._image = image
         self._sandboxes: dict[str, DockerSandbox] = {}
 
-    def get(self, session_id: str) -> DockerSandbox:
+    def get(self, session_id: str, workdir_override: str | None = None) -> DockerSandbox:
         sandbox = self._sandboxes.get(session_id)
         if sandbox is None:
-            workdir = self._host_root / session_id
+            if workdir_override:
+                workdir = pathlib.Path(workdir_override)
+            else:
+                workdir = self._host_root / session_id
             workdir.mkdir(parents=True, exist_ok=True)
             sandbox = DockerSandbox(session_id, str(workdir), image=self._image)
             self._sandboxes[session_id] = sandbox

@@ -60,16 +60,16 @@ def _spec_for(model: str):
     return detect_provider_from_registry(model)
 
 
-def _sandbox_factory() -> Callable[[str], SandboxHandle]:
+def _sandbox_factory() -> Callable[[str, "str | None"], SandboxHandle]:
     mode = os.environ.get("SANDBOX_BACKEND", "fake")  # fake|docker（Docker 联调后启用）
     if mode == "docker":
         from sandbox.docker import SandboxPool
 
         pool = SandboxPool(os.environ.get("WORKSPACE_DATA_ROOT", "./data/workspaces"))
-        return pool.get
+        return lambda session_id, workspace_path=None: pool.get(session_id, workspace_path)
     from tests.testing import FakeSandbox
 
-    return lambda session_id: FakeSandbox()
+    return lambda session_id, workspace_path=None: FakeSandbox()
 
 
 async def _make_components() -> ServerComponents:
@@ -114,6 +114,7 @@ async def _make_components() -> ServerComponents:
 
     from skills.registry import SkillRegistry
     from tasks.service import PgTaskStore
+    from server.db import PgWorkspaceStore
 
     skill_roots = [os.environ.get("CODEHARNESS_SKILLS_ROOT", "./skills_repo")]
     task_store = PgTaskStore(pool)
@@ -138,6 +139,7 @@ async def _make_components() -> ServerComponents:
         memory_store=memory_store,
         skill_registry=SkillRegistry(skill_roots),
         task_store=task_store,
+        workspaces=PgWorkspaceStore(pool),
         auth_enabled=os.environ.get("AUTH_ENABLED", "0") == "1",
         jwt_secret=os.environ.get("JWT_SECRET", ""),
         checkpointer=checkpointer,

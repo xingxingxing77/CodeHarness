@@ -1,6 +1,6 @@
 /** REST 客户端（契约⑥）。base URL 由 NEXT_PUBLIC_API_BASE 覆盖。 */
 
-import type { ApprovalTicket, ContentBlock, PlatformMessage, Run, Session } from "./types";
+import type { ApprovalTicket, ContentBlock, ModelProviderInfo, PlatformMessage, Run, Session, Workspace } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -17,11 +17,30 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  createSession: (model: string, title = "") =>
+  createSession: (model: string, title = "", workspaceId?: string | null) =>
     request<{ id: string; model: string; title: string }>("/api/v1/sessions", {
       method: "POST",
-      body: JSON.stringify({ model, title }),
+      body: JSON.stringify({ model, title, workspace_id: workspaceId ?? null }),
     }),
+
+  updateSession: (sessionId: string, body: { model?: string; title?: string; workspace_id?: string }) =>
+    request<Session>(`/api/v1/sessions/${sessionId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  listModels: () => request<ModelProviderInfo[]>("/api/v1/models"),
+
+  listWorkspaces: () => request<Workspace[]>("/api/v1/workspaces"),
+
+  addWorkspace: (name: string, path: string) =>
+    request<Workspace>("/api/v1/workspaces", {
+      method: "POST",
+      body: JSON.stringify({ name, path }),
+    }),
+
+  deleteWorkspace: (workspaceId: string) =>
+    request<{ deleted: boolean }>(`/api/v1/workspaces/${workspaceId}`, { method: "DELETE" }),
 
   listSessions: () => request<Session[]>("/api/v1/sessions"),
 

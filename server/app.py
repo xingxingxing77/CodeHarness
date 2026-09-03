@@ -138,7 +138,7 @@ class ServerComponents:
     registry: ToolRegistry
     permissions: RulePermissionEngine
     object_store: ObjectStore
-    sandbox_factory: Callable[[str], SandboxHandle]
+    sandbox_factory: Callable[[str, "str | None"], SandboxHandle]
     chat_factory: Callable[[str], SupportsStreamingMessages]
     recipe: str = "standard"
     system_prompt: str = "You are Codeharness, a helpful coding agent."
@@ -151,6 +151,7 @@ class ServerComponents:
     memory_store: Any = None            # MemoryStore / None
     skill_registry: Any = None          # SkillRegistry / None
     task_store: Any = None              # PgTaskStore / None
+    workspaces: Any = None              # PgWorkspaceStore / None
     prompt: Any = None                  # PromptComposer / None
     auth_enabled: bool = False
     jwt_secret: str = ""
@@ -172,6 +173,12 @@ class ServerComponents:
                 session_store=self.session_store,
             )
         return self._worker
+
+    async def _workspace_path(self, session_id: str) -> str | None:
+        try:
+            return await self.workspaces.path_for_session(session_id)
+        except Exception:
+            return None
 
     async def build_deps(self, job: RunJob) -> EngineDeps:
         session = await self.session_admin.get_session(job.session_id)
@@ -212,7 +219,12 @@ class ServerComponents:
             approvals=self.approvals,
             compactor=BasicCompactor(chat, model),
             policy=policy,
-            sandbox=self.sandbox_factory(job.session_id),
+            sandbox=self.sandbox_factory(
+                job.session_id,
+                await self._workspace_path(job.session_id)
+                if self.workspaces is not None
+                else None,
+            ),
             cfg=EngineConfig(
                 model=model,
                 system_prompt=(
@@ -288,6 +300,13 @@ class _BrokerPublisher(InMemoryEventPublisher):
 class CreateSessionBody(BaseModel):
     model: str
     title: str = ""
+    workspace_id: str | None = None
+
+
+class UpdateSessionBody(BaseModel):
+    model: str | None = None
+    title: str | None = None
+    workspace_id: str | None = None
 
 
 class SendMessageBody(BaseModel):
@@ -381,7 +400,13 @@ def create_app(
 
     @app.post("/api/v1/sessions", status_code=201)
     async def create_session(body: CreateSessionBody):
-        session_id = await proxy.session_admin.create_session(body.model, body.title)
+        if body.workspace_id and components.workspaces is not None:
+            ws = await components.workspaces.get(body.workspace_id)
+            if ws is None:
+                raise HTTPException(status_code=404, detail="workspace not found")
+        session_id = await proxy.session_admin.create_session(
+            body.model, body.title, workspace_id=body.workspace_id
+        )
         return {"id": session_id, "model": body.model, "title": body.title}
 
     @app.get("/api/v1/sessions")
@@ -394,6 +419,93 @@ def create_app(
         if session is None:
             raise HTTPException(status_code=404, detail="session not found")
         return session
+
+    @app.patch("/api/v1/sessions/{session_id}")
+    async def update_session(session_id: str, body: UpdateSessionBody):
+        await _require_session(session_id)
+        if body.workspace_id and components.workspaces is not None:
+            ws = await components.workspaces.get(body.workspace_id)
+            if ws is None:
+                raise HTTPException(status_code=404, detail="workspace not found")
+        updated = await proxy.session_admin.update_session(
+            session_id,
+            model=body.model,
+            title=body.title,
+            workspace_id=body.workspace_id,
+        )
+        return updated
+
+    # -- 模型目录（供应商注册表 + 常用模型；configured = 凭证或 env key 可用） ---
+
+    @app.get("/api/v1/models")
+    async def list_models():
+        import os
+
+        from api.registry import PROVIDERS
+
+        catalog: dict[str, list[str]] = {
+            "anthropic": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"],
+            "openai": ["gpt-5.2", "gpt-5-mini", "o4-mini"],
+            "deepseek": ["deepseek-chat", "deepseek-reasoner"],
+            "dashscope": ["qwen3-max", "qwen3-coder-plus"],
+            "moonshot": ["kimi-k2-0905-preview"],
+            "zhipu": ["glm-4.6"],
+            "gemini": ["gemini-2.5-pro", "gemini-2.5-flash"],
+            "openrouter": ["anthropic/claude-sonnet-4.5", "openai/gpt-5.2"],
+            "ollama": ["qwen3:32b", "llama4:latest"],
+        }
+        out = []
+        for spec in PROVIDERS:
+            models = catalog.get(spec.name, [])
+            if not models:
+                continue
+            configured = bool(os.environ.get(spec.env_key)) if spec.env_key else False
+            if not configured and components.credential_store is not None:
+                try:
+                    creds = await components.credential_store.resolve_provider(
+                        components.auth_tenant_id, spec.name
+                    )
+                    configured = creds is not None
+                except Exception:
+                    configured = False
+            out.append(
+                {
+                    "provider": spec.name,
+                    "label": spec.label,
+                    "models": models,
+                    "configured": configured,
+                }
+            )
+        return out
+
+    # -- 工作区（本机文件夹目录） ---------------------------------------------
+
+    @app.get("/api/v1/workspaces")
+    async def list_workspaces():
+        if components.workspaces is None:
+            return []
+        return await components.workspaces.list(components.auth_tenant_id)
+
+    @app.post("/api/v1/workspaces", status_code=201)
+    async def add_workspace(body: dict[str, Any]):
+        if components.workspaces is None:
+            raise HTTPException(status_code=503, detail="workspace store not configured")
+        name = str(body.get("name", "")).strip()
+        path = str(body.get("path", "")).strip()
+        if not name or not path:
+            raise HTTPException(status_code=422, detail="name and path required")
+        if not os.path.isdir(path):
+            raise HTTPException(status_code=422, detail=f"path is not a directory: {path}")
+        return await components.workspaces.create(name, path, components.auth_tenant_id)
+
+    @app.delete("/api/v1/workspaces/{workspace_id}")
+    async def delete_workspace(workspace_id: str):
+        if components.workspaces is None:
+            raise HTTPException(status_code=503, detail="workspace store not configured")
+        removed = await components.workspaces.delete(workspace_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="workspace not found")
+        return {"deleted": True}
 
     # -- 消息与 run ------------------------------------------------------------
 

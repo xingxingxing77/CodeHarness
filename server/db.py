@@ -129,6 +129,17 @@ CREATE TABLE IF NOT EXISTS approvals (
     decided_at  timestamptz
 );
 CREATE INDEX IF NOT EXISTS idx_approvals_pending ON approvals(session_id, created_at DESC) WHERE status = 'pending';
+
+CREATE TABLE IF NOT EXISTS workspaces (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   uuid NOT NULL REFERENCES tenants(id),
+    name        text NOT NULL,
+    path        text NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, path)
+);
+
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS workspace_id uuid REFERENCES workspaces(id);
 """
 
 DEFAULT_TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")
@@ -233,20 +244,52 @@ class PgSessionStore:
     # -- 会话与 run 的创建/查询（REST 层用） ---------------------------------
 
     async def create_session(
-        self, model: str, title: str = "", tenant_id: uuid.UUID = DEFAULT_TENANT
+        self,
+        model: str,
+        title: str = "",
+        tenant_id: uuid.UUID = DEFAULT_TENANT,
+        workspace_id: str | None = None,
     ) -> str:
         sid = await self._pool.fetchval(
-            "INSERT INTO sessions (tenant_id, title, model) VALUES ($1,$2,$3) RETURNING id",
+            "INSERT INTO sessions (tenant_id, title, model, workspace_id)"
+            " VALUES ($1,$2,$3,$4) RETURNING id",
             tenant_id,
             title,
             model,
+            uuid.UUID(workspace_id) if workspace_id else None,
         )
         return str(sid)
+
+    async def update_session(
+        self,
+        session_id: str,
+        *,
+        model: str | None = None,
+        title: str | None = None,
+        workspace_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        sets = ["updated_at = now()"]
+        args: list[Any] = []
+        if model is not None:
+            args.append(model)
+            sets.append(f"model = ${len(args)}")
+        if title is not None:
+            args.append(title)
+            sets.append(f"title = ${len(args)}")
+        if workspace_id is not None:
+            args.append(uuid.UUID(workspace_id))
+            sets.append(f"workspace_id = ${len(args)}")
+        args.append(uuid.UUID(session_id))
+        await self._pool.execute(
+            f"UPDATE sessions SET {', '.join(sets)} WHERE id = ${len(args)}",
+            *args,
+        )
+        return await self.get_session(session_id)
 
     async def get_session(self, session_id: str) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
             "SELECT id::text, tenant_id::text, title, model, archived, session_state,"
-            " created_at, updated_at FROM sessions WHERE id = $1",
+            " workspace_id::text AS workspace_id, created_at, updated_at FROM sessions WHERE id = $1",
             uuid.UUID(session_id),
         )
         if row is None:
@@ -259,8 +302,8 @@ class PgSessionStore:
 
     async def list_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
-            "SELECT id::text, title, model, archived, updated_at FROM sessions"
-            " WHERE archived = false ORDER BY updated_at DESC LIMIT $1",
+            "SELECT id::text, title, model, archived, workspace_id::text AS workspace_id, updated_at"
+            " FROM sessions WHERE archived = false ORDER BY updated_at DESC LIMIT $1",
             limit,
         )
         out = []
@@ -306,6 +349,54 @@ class PgSessionStore:
         d["created_at"] = d["created_at"].isoformat()
         d["finished_at"] = d["finished_at"].isoformat() if d["finished_at"] else None
         return d
+
+
+class PgWorkspaceStore:
+    """工作区（本机文件夹目录）注册表；会话通过 workspace_id 归属。"""
+
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
+
+    async def create(
+        self, name: str, path: str, tenant_id: uuid.UUID = DEFAULT_TENANT
+    ) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            "INSERT INTO workspaces (tenant_id, name, path) VALUES ($1,$2,$3)"
+            " RETURNING id::text, name, path",
+            tenant_id,
+            name,
+            path,
+        )
+        return dict(row)
+
+    async def list(self, tenant_id: uuid.UUID = DEFAULT_TENANT) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            "SELECT id::text, name, path, created_at FROM workspaces"
+            " WHERE tenant_id = $1 ORDER BY created_at",
+            tenant_id,
+        )
+        return [dict(r) | {"created_at": r["created_at"].isoformat()} for r in rows]
+
+    async def get(self, workspace_id: str) -> dict[str, Any] | None:
+        row = await self._pool.fetchrow(
+            "SELECT id::text, name, path FROM workspaces WHERE id = $1",
+            uuid.UUID(workspace_id),
+        )
+        return dict(row) if row else None
+
+    async def path_for_session(self, session_id: str) -> str | None:
+        row = await self._pool.fetchrow(
+            "SELECT w.path FROM sessions s JOIN workspaces w ON w.id = s.workspace_id"
+            " WHERE s.id = $1",
+            uuid.UUID(session_id),
+        )
+        return row["path"] if row else None
+
+    async def delete(self, workspace_id: str) -> bool:
+        n = await self._pool.execute(
+            "DELETE FROM workspaces WHERE id = $1", uuid.UUID(workspace_id)
+        )
+        return n.endswith("1")
 
 
 def _state_dict(state: SessionState) -> dict[str, Any]:

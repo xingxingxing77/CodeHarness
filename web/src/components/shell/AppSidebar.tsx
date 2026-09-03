@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * AppSidebar：分组式导航（工作区切换器 / 可折叠树 / 徽标 / 快捷键提示）。
- * 数据：Inbox 徽标 = 待审批数；后端没有的项标记 soon（降透明+跳占位页）。
+ * AppSidebar：分组式导航（可折叠树 / 徽标 / 快捷键提示）。
+ * 顶部 switcher 插槽由宿主注入（真实工作区切换器）；数据：Inbox 徽标 = 待审批数，
+ * 后端没有的项标记 soon（降透明+跳占位页）。
  */
 
 import { useState } from "react";
@@ -10,7 +11,6 @@ import {
   Activity,
   Brain,
   Calendar,
-  ChevronDown,
   ChevronRight,
   CreditCard,
   FolderKanban,
@@ -80,60 +80,12 @@ export function buildNavGroups(pendingApprovals: number): NavGroupData[] {
 
 const WORKSPACE = { name: "Codeharness" };
 
-function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
-  const [open, setOpen] = useState(false);
-  if (collapsed) {
-    return (
-      <div className="mb-2 flex h-10 items-center justify-center">
-        <span className="flex size-8 items-center justify-center rounded-[6px] bg-accent text-[13px] font-semibold text-white shadow-card">
-          C
-        </span>
-      </div>
-    );
-  }
+function CollapsedWorkspaceMark() {
   return (
-    <div className="relative mb-1">
-      <div
-        onClick={() => setOpen(!open)}
-        className="group mb-1 flex cursor-pointer select-none items-center justify-between rounded-[8px] px-2 py-2 transition-colors hover:bg-hover"
-      >
-        <div className="flex items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-[6px] bg-accent text-[13px] font-semibold text-white shadow-card">
-            {WORKSPACE.name.charAt(0)}
-          </div>
-          <div className="flex flex-col overflow-hidden">
-            <span className="mb-0.5 truncate text-[13px] font-medium leading-none text-ink">{WORKSPACE.name}</span>
-            <span className="text-[11px] leading-none text-ink-3">Platform</span>
-          </div>
-        </div>
-        <ChevronDown className="size-4 shrink-0 text-ink-3 transition-colors group-hover:text-ink-2" />
-      </div>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div
-            className="absolute left-0 top-[54px] z-50 flex w-full flex-col gap-0.5 rounded-[10px] border border-line bg-surface py-1 shadow-raised"
-            style={{ animation: "pop-in 180ms cubic-bezier(0.23,1,0.32,1) both" }}
-          >
-            {[WORKSPACE.name, "Personal", "Sandbox"].map((ws) => (
-              <div
-                key={ws}
-                onClick={() => setOpen(false)}
-                className={`mx-1 cursor-pointer rounded-[6px] px-2.5 py-2 text-[13px] transition-colors ${
-                  ws === WORKSPACE.name ? "bg-accent-tint font-medium text-accent-ink" : "text-ink-2 hover:bg-hover"
-                }`}
-              >
-                {ws}
-              </div>
-            ))}
-            <div className="mx-2 my-1 h-px bg-line" />
-            <div className="mx-1 flex cursor-pointer items-center gap-2 rounded-[6px] px-2.5 py-2 text-[13px] text-ink-2 transition-colors hover:bg-hover">
-              <span className="text-[15px] leading-none">+</span> Create workspace
-            </div>
-          </div>
-        </>
-      )}
+    <div className="mb-2 flex h-10 items-center justify-center">
+      <span className="flex size-8 items-center justify-center rounded-[6px] bg-accent text-[13px] font-semibold text-white shadow-card">
+        C
+      </span>
     </div>
   );
 }
@@ -254,6 +206,7 @@ export function AppSidebar({
   onNavigate,
   collapsed = false,
   bottomItems = [],
+  switcher,
 }: {
   groups: NavGroupData[];
   activeId: string;
@@ -261,10 +214,11 @@ export function AppSidebar({
   onNavigate?: (href: string) => void;
   collapsed?: boolean;
   bottomItems?: NavItemData[];
+  switcher?: React.ReactNode;
 }) {
   return (
     <div className="flex h-full w-full flex-col gap-3 p-3">
-      <WorkspaceSwitcher collapsed={collapsed} />
+      {collapsed ? <CollapsedWorkspaceMark /> : switcher}
 
       <div className="mt-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {groups.map((group, idx) => (

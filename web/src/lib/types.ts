@@ -20,7 +20,16 @@ export type PlatformMessage = {
 
 // ---- REST（契约⑥） -------------------------------------------------------
 
-export type Session = { id: string; title: string; model: string; archived?: boolean };
+export type Session = { id: string; title: string; model: string; archived?: boolean; workspace_id?: string | null };
+
+export type Workspace = { id: string; name: string; path: string };
+
+export type ModelProviderInfo = {
+  provider: string;
+  label: string;
+  models: string[];
+  configured: boolean;
+};
 
 export type Run = {
   id: string;

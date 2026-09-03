@@ -3,11 +3,11 @@
 /** 聊天页主视图：chatStore 驱动；空会话 hero 居中 / 会话时间线 + 底部输入与统计栏。 */
 
 import { useEffect, useRef, useState } from "react";
-import { Box } from "lucide-react";
 
 import { ValuePill } from "@/components/bui/atoms/entity-chip";
 import { api } from "@/lib/api";
 import { MessageBubble } from "@/components/chat/MessageBubble";
+import { ModelPicker } from "@/components/chat/ModelPicker";
 import { PromptBox } from "@/components/chat/PromptBox";
 import { ThoughtPanel } from "@/components/chat/ThoughtPanel";
 import { mapErrorText } from "@/lib/errors";
@@ -39,6 +39,11 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       .catch(() => undefined);
   }, [sessionId]);
 
+  const changeModel = (next: string) => {
+    setModel(next);
+    api.updateSession(sessionId, { model: next }).catch(() => undefined);
+  };
+
   useEffect(() => {
     if (stick) bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, live, tools, thoughtSteps, stick]);
@@ -69,18 +74,19 @@ export function ChatView({ sessionId }: { sessionId: string }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {model && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-[12.5px] text-ink-2">
-                <Box className="size-3.5" />
-                {model}
-              </span>
-            )}
+            <ModelPicker model={model} onPick={changeModel} className="rounded-full border border-line bg-surface" />
             <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-[12.5px] text-ink-2">
               Standard 模式
             </span>
           </div>
 
-          <PromptBox running={running} onSend={(blocks) => send(blocks)} className="w-full max-w-[640px]" />
+          <PromptBox
+            running={running}
+            onSend={(blocks) => send(blocks)}
+            model={model}
+            onModelChange={changeModel}
+            className="w-full max-w-[640px]"
+          />
         </div>
       </div>
     );
@@ -139,6 +145,8 @@ export function ChatView({ sessionId }: { sessionId: string }) {
         <PromptBox
           running={running}
           onSend={(blocks) => send(blocks)}
+          model={model}
+          onModelChange={changeModel}
           className="mx-auto w-full max-w-[760px]"
         />
         {(turns > 0 || usage) && (

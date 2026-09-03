@@ -14,6 +14,7 @@ import { Terminal, FileText, PenLine, FolderSearch, Search, ImagePlus, Mic, Arro
 import type { LucideIcon } from "lucide-react";
 
 import type { ContentBlock } from "@/lib/types";
+import { ModelPicker } from "@/components/chat/ModelPicker";
 
 type ClassValue = string | number | boolean | null | undefined;
 function cn(...inputs: ClassValue[]): string {
@@ -70,9 +71,11 @@ type PromptBoxProps = {
   running?: boolean;
   onSend: (blocks: ContentBlock[], toolId: string | null) => void;
   className?: string;
+  model?: string | null;
+  onModelChange?: (model: string) => void;
 };
 
-export function PromptBox({ disabled, running, onSend, className }: PromptBoxProps) {
+export function PromptBox({ disabled, running, onSend, className, model, onModelChange }: PromptBoxProps) {
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [value, setValue] = React.useState("");
@@ -248,6 +251,9 @@ export function PromptBox({ disabled, running, onSend, className }: PromptBoxPro
             )}
 
             <div className="ml-auto flex items-center gap-1.5">
+              {onModelChange && (
+                <ModelPicker model={model} onPick={onModelChange} />
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button type="button" className={iconBtn} aria-label="Voice (coming soon)">

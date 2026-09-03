@@ -29,6 +29,7 @@ export function useChatStream(
   const setLastError = useChatStore((s) => s.setLastError);
   const resetTurn = useChatStore((s) => s.resetTurn);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const createdHereRef = useRef(false);
 
   // 历史：进页拉一次（事实源）
   useEffect(() => {
@@ -123,7 +124,6 @@ export function useChatStream(
     },
     [activeId, appendUser, resetTurn, setLastError, onSessionCreated],
   );
-  const createdHereRef = { current: false };
 
   const decide = useCallback(
     async (

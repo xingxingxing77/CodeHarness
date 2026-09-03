@@ -8,7 +8,8 @@ import { Hash, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, SquarePen,
 
 import { api } from "@/lib/api";
 import { AppSidebar, buildNavGroups } from "@/components/shell/AppSidebar";
-import type { Session } from "@/lib/types";
+import { WorkspaceSwitcher } from "@/components/shell/WorkspaceSwitcher";
+import type { Session, Workspace } from "@/lib/types";
 
 export const PLACEHOLDER_TITLES: Record<string, string> = {
   "/analytics": "Analytics",
@@ -65,12 +66,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [dark, setDark] = useState(false);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [activeWs, setActiveWs] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("codeharness_workspace");
+    if (stored) setActiveWs(stored);
+  }, []);
 
   useEffect(() => {
     api.listSessions().then(setSessions).catch(() => undefined);
     api
       .listApprovals()
       .then((rows) => setPending(rows.length))
+      .catch(() => undefined);
+    api
+      .listWorkspaces()
+      .then((rows) => {
+        setWorkspaces(rows);
+        setActiveWs((cur) => (cur && rows.some((w) => w.id === cur) ? cur : null));
+      })
       .catch(() => undefined);
   }, [pathname]);
 
@@ -98,11 +113,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       { items: [{ id: "__new", title: "New chat", icon: SquarePen }] },
       {
         heading: "Chats",
-        items: sessions.slice(0, 8).map((s) => ({ id: s.id, title: s.title || s.id.slice(0, 8), icon: Hash })),
+        items: sessions
+          .filter((s) => (activeWs ? s.workspace_id === activeWs : true))
+          .slice(0, 8)
+          .map((s) => ({ id: s.id, title: s.title || s.id.slice(0, 8), icon: Hash })),
       },
       ...buildNavGroups(pending),
     ],
-    [pending, sessions],
+    [pending, sessions, activeWs],
   );
   const activeId = activeNavId(pathname);
   const title = titleForPath(pathname, sessions);
@@ -114,9 +132,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const newChat = () => {
     api
-      .createSession("claude-sonnet-4-6", "New session")
+      .createSession("claude-sonnet-4-6", "New session", activeWs)
       .then(({ id }) => router.push(`/sessions/${id}`))
       .catch(() => undefined);
+  };
+
+  const selectWorkspace = (id: string | null) => {
+    setActiveWs(id);
+    if (id) localStorage.setItem("codeharness_workspace", id);
+    else localStorage.removeItem("codeharness_workspace");
   };
 
   const toggleTheme = () => {
@@ -143,6 +167,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <AppSidebar
           groups={groups}
           activeId={activeId}
+          switcher={
+            <WorkspaceSwitcher
+              workspaces={workspaces}
+              activeId={activeWs}
+              onSelect={selectWorkspace}
+              onCreated={(ws) => {
+                setWorkspaces((prev) => [...prev, ws]);
+                selectWorkspace(ws.id);
+              }}
+            />
+          }
           onSelect={(id) => {
             if (id === "__new") {
               newChat();
@@ -156,7 +191,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               toggleTheme();
               return;
             }
-            if (id.startsWith("/")) navigate(id);
+            if (id.startsWith("/")) {
+              navigate(id);
+              return;
+            }
+            navigate(`/sessions/${id}`);
           }}
           onNavigate={navigate}
           collapsed={collapsed}

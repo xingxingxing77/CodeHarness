@@ -64,7 +64,20 @@ export const useChatStore = create<ChatState>((set) => ({
   finished: true,
   lastError: null,
 
-  loadHistory: (messages) => set({ messages, finished: true }),
+  loadHistory: (messages) =>
+    set({
+      messages,
+      finished: true,
+      // 换会话：清空上一会话的瞬态，避免串扰
+      live: null,
+      thoughtSteps: [],
+      tools: [],
+      status: null,
+      usage: null,
+      typewriterTarget: null,
+      approval: null,
+      lastError: null,
+    }),
 
   appendUser: (content) =>
     set((s) => ({
