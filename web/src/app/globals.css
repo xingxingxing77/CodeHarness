@@ -1,0 +1,389 @@
+/*
+ * 全局样式（06 §11 双令牌体系 · J24 落地方案 §3 全量重建）：
+ * - 裸 CSS 变量（--ink 等）：供 bui/ 组件内联 style 引用，.dark 整组覆盖
+ * - @theme inline 映射（--color-* 等）：生成 bg-ink/text-ink-2/shadow-card/
+ *   rounded-control 等工具类，inline 模式使工具类直接引用裸变量，
+ *   暗色切换只需覆盖裸变量一层
+ * - shadcn theme tokens（--background 系）暂未引入（shadcn 未初始化），
+ *   后续接入时与 BUI 体系并存、命名空间不重叠（06 §11）
+ * 暗色模式经 class="dark" 切换并持久化（J24 定案，WorkspaceSidebar 设置面板）
+ */
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── 裸设计令牌（light） ─────────────────────────────── */
+:root {
+  color-scheme: light;
+
+  /* ink 文字/图标灰阶 */
+  --ink: #15171c;
+  --ink-2: #5a606b;
+  --ink-3: #8b919c;
+
+  /* accent 靛紫系（BUI 默认） */
+  --accent: #5b5bf0;
+  --accent-ink: #5b5bf0;
+  --accent-tint: color-mix(in srgb, #5b5bf0 12%, var(--surface));
+
+  /* 语义色 */
+  --orange: #f09a2f;
+  --green: #25a878;
+  --red: #ee5c61;
+  --green-tint: color-mix(in srgb, #25a878 14%, var(--surface));
+  --red-tint: color-mix(in srgb, #ee5c61 14%, var(--surface));
+
+  /* flowchart 条件卡紫（10.7 落地新增令牌，用户定案） */
+  --purple: #9a5cff;
+
+  /* 表面/结构 */
+  --surface: #ffffff;
+  --canvas: #f7f7f8;
+  --page: #f7f7f8;
+  --field: #f1f1f3;
+  --inset: #f4f4f6;
+  --line: #e7e7ea;
+  --line-strong: #d4d4d8;
+  --hover: #f1f1f3;
+  --hover-2: #eaeaf0;
+  --grid-line: var(--line);
+
+  /* tooltip（records-table grounding 帮助等） */
+  --tooltip-bg: #1c1d22;
+  --tooltip-fg: #ecedf1;
+  --tooltip-muted: #a7adb8;
+}
+
+/* ── 裸设计令牌（dark 覆盖，仅需反转组） ─────────────── */
+.dark {
+  color-scheme: dark;
+
+  --surface: #1c1d22;
+  --canvas: #16171b;
+  --page: #16171b;
+  --field: #232429;
+  --inset: #202127;
+  --line: #2c2d34;
+  --line-strong: #3a3b43;
+  --hover: #232429;
+  --hover-2: #2a2b32;
+
+  --ink: #ecedf1;
+  --ink-2: #a7adb8;
+  --ink-3: #6f757f;
+
+  --tooltip-bg: #2a2b32;
+  --tooltip-fg: #ecedf1;
+  --tooltip-muted: #6f757f;
+}
+
+body {
+  @apply antialiased;
+  font-family: var(--font-sans);
+}
+
+/* ── @theme 映射（inline：工具类直引裸变量） ─────────── */
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-tint: var(--accent-tint);
+  --color-orange: var(--orange);
+  --color-green: var(--green);
+  --color-red: var(--red);
+  --color-green-tint: var(--green-tint);
+  --color-red-tint: var(--red-tint);
+  --color-purple: var(--purple);
+  --color-surface: var(--surface);
+  --color-canvas: var(--canvas);
+  --color-page: var(--page);
+  --color-field: var(--field);
+  --color-inset: var(--inset);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-hover: var(--hover);
+  --color-hover-2: var(--hover-2);
+
+  --shadow-overlay: 0 12px 40px -8px rgb(20 20 40 / 0.18), 0 2px 8px rgb(20 20 40 / 0.08);
+  --shadow-hairline: 0 0 0 1px rgb(20 20 40 / 0.06);
+  --shadow-btn: 0 1px 2px rgb(20 20 40 / 0.1);
+  --shadow-card: 0 1px 3px rgb(20 20 40 / 0.08);
+  --shadow-raised: 0 8px 24px -8px rgb(20 20 40 / 0.18);
+
+  --radius-control: 8px;
+  --radius-card: 14px;
+  --radius-chip: 9999px;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* ── keyframes（组件 inline animation 引用全集） ─────── */
+@keyframes pixel-on {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes shimmer-text {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes eq-bounce {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 自定义时长（组件用到；spin 为内置名，此处补 keyframes 供 inline animation） */
+@layer base {
+  .duration-400 { transition-duration: 400ms; }
+  .duration-250 { transition-duration: 250ms; }
+}
+
+/* ── 组件专属类 ──────────────────────────────────────── */
+
+/* streaming/search/thinking：链接式下划线（hover 展开） */
+.animated-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  transition: background-size 200ms ease;
+}
+a:hover > .animated-underline,
+.animated-underline:hover {
+  background-size: 100% 1px;
+}
+
+/* streaming-text 来源小头像（令牌化字母头像底座） */
+.source-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  object-fit: cover;
+  background: var(--field);
+  color: var(--ink-2);
+  font-size: 8px;
+  font-weight: 700;
+  user-select: none;
+}
+
+/* 卡片结构三件套（approval/recommendation/diff/context/fine-tune） */
+.primitive-card-pad { padding: 14px 16px; }
+.primitive-card-bar { padding: 9px 16px; }
+.primitive-card-footer { padding: 10px 12px; }
+.primitive-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+.primitive-table-cell { padding: 9px 12px; vertical-align: middle; }
+
+/* filter-table 状态药丸（进度色已令牌化：cyan→accent，10.7 适配记录） */
+.filter-status-todo {
+  border-color: color-mix(in srgb, var(--orange) 35%, transparent);
+  background: color-mix(in srgb, var(--orange) 8%, var(--surface));
+  color: var(--ink);
+}
+.filter-status-progress {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--ink);
+}
+.filter-status-done {
+  border-color: color-mix(in srgb, var(--green) 35%, transparent);
+  background: color-mix(in srgb, var(--green) 10%, var(--surface));
+  color: var(--ink);
+}
+
+/* insight-cards 图表悬浮层 */
+.insight-chart-stage { position: relative; }
+.insight-chart-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 22px;
+  width: 1px;
+  background: var(--line-strong);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.insight-chart-tooltip-anchor {
+  position: absolute;
+  top: 8px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 10;
+}
+.insight-chart-tooltip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.insight-chart-tooltip-item { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.insight-chart-tooltip-dot { width: 6px; height: 6px; border-radius: 9999px; }
+
+/* sidebar-nav（折叠态由 data-sidebar-collapsed 驱动） */
+.sidebar-row { width: 100%; }
+.sidebar-copy {
+  transition:
+    opacity var(--sidebar-copy-duration, 180ms) var(--sidebar-easing, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform var(--sidebar-copy-duration, 180ms) var(--sidebar-easing, cubic-bezier(0.16, 1, 0.3, 1));
+}
+aside[data-sidebar-collapsed="true"] .sidebar-copy {
+  opacity: 0;
+  transform: translateX(calc(var(--sidebar-copy-offset, 8px) * -1));
+  pointer-events: none;
+}
+aside[data-sidebar-collapsed="true"] .sidebar-workspace-control,
+aside[data-sidebar-collapsed="true"] .sidebar-collapse-control {
+  opacity: 0;
+  pointer-events: none;
+}
+.sidebar-expand-control { opacity: 0; pointer-events: none; }
+aside[data-sidebar-collapsed="true"] .sidebar-expand-control {
+  opacity: 1;
+  pointer-events: auto;
+}
+.sidebar-glide-highlight {
+  transition:
+    top 220ms cubic-bezier(0.23, 1, 0.32, 1),
+    height 220ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 150ms ease;
+}
+.sidebar-logo { display: inline-flex; }
+
+/* ── records-table（约 40 类，按官方视觉骨架实现） ───── */
+.records-shell { display: flex; flex-direction: column; width: 100%; max-width: 950px; }
+.records-shell.is-fill { height: 100%; max-width: none; }
+.records-scroll {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  max-height: 540px;
+  outline: none;
+}
+.records-table { border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.records-header-cell {
+  position: relative;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  padding: 0;
+  text-align: left;
+  font-weight: 500;
+  color: var(--ink-2);
+  white-space: nowrap;
+  user-select: none;
+}
+.records-header-cell.is-colsel { background: var(--accent-tint); }
+.records-header-button { display: flex; width: 100%; height: 35px; align-items: center; gap: 6px; padding: 0 10px; cursor: pointer; }
+.records-header-button:hover { background: var(--hover); }
+.records-header-icon { display: flex; color: var(--ink-3); }
+.records-sort { display: inline-flex; opacity: 0; transition: opacity 150ms; cursor: pointer; color: var(--ink-3); }
+.records-sort.is-visible { opacity: 1; }
+.records-resize-handle { position: absolute; top: 0; right: 0; width: 6px; height: 100%; cursor: col-resize; }
+.records-resize-handle.is-resizing { background: var(--accent); opacity: 0.4; }
+.records-sticky-cell { position: sticky; left: 0; z-index: 2; background: var(--surface); }
+.records-company-header { display: flex; align-items: center; gap: 8px; height: 35px; padding: 0 10px; }
+.records-row { transition: background-color 150ms; }
+.records-row:hover { background: var(--hover); }
+.records-row.is-selected .records-cell { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.records-row.is-selected .records-sticky-cell { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.records-cell { border-bottom: 1px solid var(--line); height: 38px; padding: 0 10px; white-space: nowrap; }
+.records-company-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.records-rownum { width: 16px; flex-shrink: 0; font-size: 11px; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+.records-company-mark {
+  display: flex; width: 22px; height: 22px; flex-shrink: 0;
+  align-items: center; justify-content: center;
+  border-radius: 6px; background: var(--inset);
+  font-size: 11px; font-weight: 600; color: var(--ink-2);
+}
+.records-company-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--ink); }
+.records-company-name.has-link:hover { text-decoration: underline; }
+.records-checkbox { display: inline-flex; flex-shrink: 0; cursor: pointer; }
+.records-checkbox input { display: none; }
+.records-checkbox-box {
+  display: flex; width: 15px; height: 15px;
+  align-items: center; justify-content: center;
+  border-radius: 4px; border: 1.5px solid var(--line-strong);
+  color: #fff; transition: background-color 120ms, border-color 120ms;
+}
+.records-checkbox-box.is-active { background: var(--accent); border-color: var(--accent); }
+.records-checkbox-dash { width: 8px; height: 2px; border-radius: 1px; background: #fff; }
+.records-tags { display: flex; gap: 4px; overflow: hidden; min-width: 0; position: relative; }
+.records-tags-measure { position: absolute; visibility: hidden; display: flex; gap: 4px; pointer-events: none; white-space: nowrap; }
+.records-tag {
+  --tag-base: var(--ink-3);
+  display: inline-flex; height: 20px; flex-shrink: 0; align-items: center;
+  border-radius: 9999px; padding: 0 8px;
+  font-size: 11.5px; font-weight: 500;
+  color: color-mix(in srgb, var(--tag-base) 65%, var(--ink));
+  background: color-mix(in srgb, var(--tag-base) 14%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tag-base) 28%, transparent);
+}
+.records-more-tag {
+  display: inline-flex; height: 20px; flex-shrink: 0; align-items: center;
+  border-radius: 9999px; padding: 0 6px;
+  font-size: 11px; font-weight: 500; color: var(--ink-3);
+  background: var(--inset);
+}
+.records-calc { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.records-pulse { width: 6px; height: 6px; border-radius: 9999px; background: var(--accent); animation: eq-bounce 900ms ease-in-out infinite; }
+.records-calculation-row td { border-bottom: none; border-top: 1px solid var(--line); background: var(--canvas); }
+.records-calculation-label { font-weight: 500; color: var(--ink-2); }
+.records-calculation-number { font-weight: 600; color: var(--ink); }
+.records-add-calculation { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-3); cursor: pointer; }
+.records-add-calculation:hover { color: var(--ink); }
+.records-footer-value { font-size: 12px; color: var(--ink-2); }
+.records-average { display: inline-flex; align-items: center; gap: 6px; }
+.records-link { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-ink); }
+.records-link:hover .records-link-label { text-decoration: underline; }
+.records-link-label { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.records-strength { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); }
+.records-strength-dot { width: 7px; height: 7px; border-radius: 9999px; flex-shrink: 0; }
+.records-muted { color: var(--ink-3); }
+
+/* Markdown 代码块高亮（rehype-highlight，06 §8.2 批次 B；暗色为主） */
+.hljs { display: block; overflow-x: auto; padding: 0.75rem; border-radius: 0.5rem; background: #1e1e1e; color: #d4d4d4; font-size: 12.5px; line-height: 1.55; }
+.hljs-keyword, .hljs-literal, .hljs-selector-tag { color: #c586c0; }
+.hljs-string, .hljs-regexp, .hljs-addition { color: #ce9178; }
+.hljs-number, .hljs-symbol, .hljs-bullet { color: #b5cea8; }
+.hljs-title, .hljs-title.function_ { color: #dcdcaa; }
+.hljs-comment, .hljs-quote { color: #6a9955; font-style: italic; }
+.hljs-attr, .hljs-variable, .hljs-template-variable, .hljs-type { color: #9cdcfe; }
+.hljs-built_in, .hljs-builtin-name { color: #4ec9b0; }
+.hljs-meta { color: #569cd6; }
+.hljs-section { color: #dcdcaa; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: bold; }
+
+/* 图谱浏览器：悬停节点呼吸光环（GraphExplorer，纯视觉不触碰 NVL 数据层） */
+@keyframes graph-breath {
+  0%, 100% { transform: scale(0.85); opacity: 0.95; }
+  50% { transform: scale(1.4); opacity: 0.25; }
+}
+.graph-breath-ring { animation: graph-breath 1.6s ease-in-out infinite; }

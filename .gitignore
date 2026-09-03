@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# 运行时数据（会话工作目录 / 沙箱产物）
+data/
+
+# 密钥与环境（配置清单 🔴 项不入库）
+.env
+*.key
+
+# Node / Next.js
+web/node_modules/
+web/.next/
+web/out/
+npm-debug.log*
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 本地日志
+*.log

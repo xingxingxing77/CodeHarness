@@ -1,0 +1,27 @@
+[project]
+name = "codeharness"
+version = "0.2.0"
+description = "Codeharness — multi-user agent platform (LangGraph + FastAPI + Redis + Postgres + Docker sandbox)"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=1.2,<2",
+    "langchain-core>=1.6,<2",
+    "langgraph-checkpoint-postgres",
+    "pydantic>=2.13,<3",
+    "redis>=8",
+    "anthropic",
+    "openai",
+    "aiodocker",
+    "fastapi",
+    "uvicorn",
+    "httpx",
+    "asyncpg",
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.setuptools.packages.find]
+include = ["api*", "engine*", "gateway*", "tools*", "permissions*", "sandbox*", "services*", "server*", "state*", "utils*", "memory*", "auth*", "prompts*", "hooks*", "skills*", "plugins*", "mcp*", "swarm*", "coordinator*", "tasks*", "bridge*", "channels*", "commands*", "personalization*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
