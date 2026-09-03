@@ -67,6 +67,41 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE INDEX IF NOT EXISTS idx_runs_session ON runs(session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_runs_active ON runs(session_id) WHERE status IN ('queued','running','interrupted');
 
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS credentials (
+    id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   uuid NOT NULL REFERENCES tenants(id),
+    provider    text NOT NULL,
+    label       text NOT NULL DEFAULT '',
+    secret_enc  text NOT NULL,
+    meta        jsonb NOT NULL DEFAULT '{}',
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, provider, label)
+);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id         bigserial PRIMARY KEY,
+    tenant_id  uuid,
+    kind       text NOT NULL,
+    payload    jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_tenant ON audit_events(tenant_id, id);
+
+CREATE TABLE IF NOT EXISTS memories (
+    id          bigserial PRIMARY KEY,
+    tenant_id   uuid NOT NULL REFERENCES tenants(id),
+    session_id  uuid REFERENCES sessions(id),
+    kind        text NOT NULL DEFAULT 'fact',
+    content     text NOT NULL,
+    embedding   vector(1536),
+    meta        jsonb NOT NULL DEFAULT '{}',
+    created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_memories_ann ON memories USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS idx_memories_tenant ON memories(tenant_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS approvals (
     ticket_id   text PRIMARY KEY,
     run_id      uuid NOT NULL REFERENCES runs(id),
@@ -271,3 +306,50 @@ def _state_dict(state: SessionState) -> dict[str, Any]:
         "work_log": list(state.work_log),
         "async_tasks": list(state.async_tasks),
     }
+
+
+class PgCredentialStore:
+    """凭证库持久化（写即 AES-GCM 加密；读返回明文 Credential）。"""
+
+    def __init__(self, pool, vault) -> None:
+        self._pool = pool
+        self._vault = vault
+
+    async def add(self, tenant_id, provider: str, api_key: str, *, label: str = "", base_url: str | None = None) -> str:
+        blob = self._vault.encrypt(api_key)
+        meta = {"base_url": base_url} if base_url else {}
+        return str(await self._pool.fetchval(
+            "INSERT INTO credentials (tenant_id, provider, label, secret_enc, meta)"
+            " VALUES ($1,$2,$3,$4,$5::jsonb)"
+            " ON CONFLICT (tenant_id, provider, label) DO UPDATE SET secret_enc = EXCLUDED.secret_enc"
+            " RETURNING id",
+            tenant_id, provider, label, blob.hex(), __import__("json").dumps(meta),
+        ))
+
+    async def list(self, tenant_id) -> list[dict]:
+        rows = await self._pool.fetch(
+            "SELECT id::text, provider, label, meta, created_at FROM credentials"
+            " WHERE tenant_id = $1 ORDER BY created_at DESC",
+            tenant_id,
+        )
+        return [dict(r) | {"created_at": r["created_at"].isoformat()} for r in rows]
+
+    async def delete(self, tenant_id, credential_id: str) -> bool:
+        n = await self._pool.execute(
+            "DELETE FROM credentials WHERE tenant_id = $1 AND id = $2",
+            tenant_id, __import__("uuid").UUID(credential_id),
+        )
+        return n.endswith("1")
+
+    async def resolve_provider(self, tenant_id, provider: str):
+        """返回该租户指定 provider 的明文凭证；无则 None。"""
+        row = await self._pool.fetchrow(
+            "SELECT secret_enc FROM credentials WHERE tenant_id = $1 AND provider = $2"
+            " ORDER BY created_at DESC LIMIT 1",
+            tenant_id, provider,
+        )
+        if row is None:
+            return None
+        from api.factory import Credential
+
+        return Credential(api_key=self._vault.decrypt(bytes.fromhex(row["secret_enc"])))

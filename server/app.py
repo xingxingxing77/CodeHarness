@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable, Protocol
@@ -142,7 +143,15 @@ class ServerComponents:
     system_prompt: str = "You are Codeharness, a helpful coding agent."
     max_tokens: int = 8192
     max_turns: int = 200
-    policy: Any = None                               # PolicyEngine；None → NoopPolicy
+    context_window_tokens: int = 200_000
+    compact_threshold_tokens: int = 160_000
+    policy: Any = None
+    credential_store: Any = None        # PgCredentialStore / None
+    memory_store: Any = None            # MemoryStore / None
+    prompt: Any = None                  # PromptComposer / None
+    auth_enabled: bool = False
+    jwt_secret: str = ""
+    auth_tenant_id: str = "00000000-0000-0000-0000-000000000001"                               # PolicyEngine；None → NoopPolicy
     checkpointer: Any = None                         # BaseCheckpointSaver；PG 形态传 AsyncPostgresSaver
     _worker: RunWorker | None = field(default=None, repr=False)
     _worker_task: asyncio.Task | None = field(default=None, repr=False)
@@ -164,7 +173,18 @@ class ServerComponents:
     async def build_deps(self, job: RunJob) -> EngineDeps:
         session = await self.session_admin.get_session(job.session_id)
         model = (session or {}).get("model") or "claude-sonnet-4-6"
-        chat = self.chat_factory(model)
+        chat = None
+        if self.credential_store is not None:
+            from api.factory import create_client
+            from api.registry import detect_provider_from_registry
+
+            spec = detect_provider_from_registry(model)
+            if spec is not None:
+                creds = await self.credential_store.resolve_provider(self.auth_tenant_id, spec.name)
+                if creds is not None:
+                    chat = create_client(model, creds)
+        if chat is None:
+            chat = self.chat_factory(model)
         policy = self.policy or NoopPolicy()
         gateway = SandboxToolGateway(
             self.registry,
@@ -181,9 +201,15 @@ class ServerComponents:
             sandbox=self.sandbox_factory(job.session_id),
             cfg=EngineConfig(
                 model=model,
-                system_prompt=self.system_prompt,
+                system_prompt=(
+                    self.prompt.compose(session.get("session_state"))
+                    if self.prompt is not None and isinstance(session.get("session_state"), dict)
+                    else self.system_prompt
+                ),
                 max_tokens=self.max_tokens,
                 max_turns=self.max_turns,
+                context_window_tokens=self.context_window_tokens,
+                auto_compact_threshold_tokens=self.compact_threshold_tokens,
             ),
         )
 
@@ -307,6 +333,22 @@ def create_app(
         lifespan=lifespan if manage_lifecycle else None,
     )
 
+    @app.middleware("http")
+    async def _auth_middleware(request, call_next):
+        if proxy.auth_enabled:
+            from auth.service import verify_token
+            from fastapi.responses import JSONResponse
+
+            path = request.url.path
+            if path.startswith("/api/") and not path.startswith("/api/v1/auth/"):
+                token = request.headers.get("authorization", "").removeprefix("Bearer ")
+                if verify_token(token, secret=proxy.jwt_secret) is None:
+                    return JSONResponse(
+                        {"error": {"code": "unauthorized", "message": "invalid token"}},
+                        status_code=401,
+                    )
+        return await call_next(request)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -423,6 +465,74 @@ def create_app(
         )
         await proxy.queue.enqueue(resume_job)
         return {"status": "queued", "ticket_status": decided.status}
+
+    # -- 认证（P3；AUTH_ENABLED=1 时强制 Bearer） -------------------------------
+
+    @app.post("/api/v1/auth/login")
+    async def login(body: dict[str, Any]):
+        from auth.service import issue_token
+
+        username = str(body.get("username", ""))
+        password = str(body.get("password", ""))
+        expected = os.environ.get("AUTH_ADMIN_PASSWORD")
+        if not expected or username != os.environ.get("AUTH_ADMIN_USER", "admin") or password != expected:
+            raise HTTPException(status_code=401, detail="invalid credentials")
+        token = issue_token({"sub": username, "tenant_id": components.auth_tenant_id},
+                            secret=components.jwt_secret)
+        return {"access_token": token, "token_type": "bearer"}
+
+    # -- 凭证（P3；写即加密，永不回显） ------------------------------------------
+
+    @app.get("/api/v1/credentials")
+    async def list_credentials():
+        if components.credential_store is None:
+            raise HTTPException(status_code=503, detail="credential vault not configured")
+        return await proxy.credential_store.list(components.auth_tenant_id)
+
+    @app.post("/api/v1/credentials", status_code=201)
+    async def add_credential(body: dict[str, Any]):
+        if components.credential_store is None:
+            raise HTTPException(status_code=503, detail="credential vault not configured")
+        provider = str(body.get("provider", ""))
+        api_key = str(body.get("api_key", ""))
+        if not provider or not api_key:
+            raise HTTPException(status_code=422, detail="provider and api_key required")
+        credential_id = await proxy.credential_store.add(
+            components.auth_tenant_id, provider, api_key,
+            label=str(body.get("label", "")), base_url=body.get("base_url"),
+        )
+        return {"id": credential_id, "provider": provider}
+
+    @app.delete("/api/v1/credentials/{credential_id}")
+    async def delete_credential(credential_id: str):
+        if components.credential_store is None:
+            raise HTTPException(status_code=503, detail="credential vault not configured")
+        removed = await proxy.credential_store.delete(components.auth_tenant_id, credential_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="credential not found")
+        return {"deleted": True}
+
+    # -- 语义记忆（P3） -----------------------------------------------------------
+
+    @app.post("/api/v1/memories", status_code=201)
+    async def add_memory(body: dict[str, Any]):
+        if components.memory_store is None:
+            raise HTTPException(status_code=503, detail="memory store not configured")
+        record = await proxy.memory_store.add(
+            components.auth_tenant_id, str(body.get("content", "")),
+            kind=str(body.get("kind", "fact")), session_id=body.get("session_id"),
+        )
+        return {"id": record.id, "content": record.content, "kind": record.kind}
+
+    @app.get("/api/v1/memories/search")
+    async def search_memories(q: str, k: int = 5):
+        if components.memory_store is None:
+            raise HTTPException(status_code=503, detail="memory store not configured")
+        records = await proxy.memory_store.search(components.auth_tenant_id, q, k=k)
+        return [
+            {"id": r.id, "content": r.content, "kind": r.kind, "score": r.score}
+            for r in records
+        ]
 
     # -- SSE（契约④） ----------------------------------------------------------
 

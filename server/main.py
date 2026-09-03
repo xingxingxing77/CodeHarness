@@ -92,6 +92,26 @@ async def _make_components() -> ServerComponents:
 
     broker = InMemoryBroker()  # 单进程形态；多进程换 server/broker.RedisBroker
 
+    from auth.service import CredentialVault
+    from hooks.hooks import HooksEventBus
+    from memory.memory import MemoryStore
+    from prompts.compose import PromptComposer
+
+    master_key = os.environ.get("CREDENTIAL_MASTER_KEY", "")
+    vault = None
+    credential_store = None
+    if master_key:
+        vault = CredentialVault(master_key)
+        credential_store = __import__("server.db", fromlist=["PgCredentialStore"]).PgCredentialStore(pool, vault)
+    else:
+        log.warning("CREDENTIAL_MASTER_KEY not set: credential vault disabled (MockChat/env only)")
+
+    hooks_bus = HooksEventBus(pool, tenant_id="00000000-0000-0000-0000-000000000001")
+    memory_store = MemoryStore(pool)
+    prompt = PromptComposer(
+        identity="You are Codeharness, a capable coding agent for this tenant.",
+    )
+
     components = ServerComponents(
         message_store=PgMessageStore(pool),
         session_store=PgSessionStore(pool),
@@ -106,9 +126,12 @@ async def _make_components() -> ServerComponents:
         object_store=InMemoryObjectStore(),
         sandbox_factory=_sandbox_factory(),
         chat_factory=_default_chat_factory,
-        system_prompt=os.environ.get(
-            "CODEHARNESS_SYSTEM_PROMPT", "You are Codeharness, a helpful coding agent."
-        ),
+        prompt=prompt,
+        policy=hooks_bus,
+        credential_store=credential_store,
+        memory_store=memory_store,
+        auth_enabled=os.environ.get("AUTH_ENABLED", "0") == "1",
+        jwt_secret=os.environ.get("JWT_SECRET", ""),
         checkpointer=checkpointer,
     )
     if _PROBE:
